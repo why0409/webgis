@@ -1,0 +1,15 @@
+data/raw/
+
+# backend
+backend/target/
+backend/.mvn/
+*.class
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/webgis
+    username: webgis
+    password: webgis123
+server:
+  port: 8080

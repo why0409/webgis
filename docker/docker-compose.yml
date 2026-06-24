@@ -1,0 +1,22 @@
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: webgis-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: webgis
+      POSTGRES_USER: webgis
+      POSTGRES_PASSWORD: webgis123
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./postgis-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webgis -d webgis"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgis_data:
