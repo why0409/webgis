@@ -18,5 +18,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # Stage 2: Martin 向量瓦片服务
+  # 访问: http://localhost:3000/catalog  查看所有可用表
+  # 瓦片: http://localhost:3000/{table}/{z}/{x}/{y}
+  martin:
+    image: ghcr.io/maplibre/martin:latest
+    container_name: webgis-martin
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Martin 通过容器内网络连接 PostGIS（postgis 服务名即 hostname）
+      DATABASE_URL: "postgresql://webgis:webgis123@postgis:5432/webgis"
+    depends_on:
+      postgis:
+        condition: service_healthy
+    command:
+      - --listen-addresses
+      - "0.0.0.0:3000"
+
 volumes:
   postgis_data:

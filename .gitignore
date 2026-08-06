@@ -1,15 +1,121 @@
+# =============================================================================
+# Data
+# =============================================================================
+# 原始 OSM 数据（体积大，可通过脚本重新获取）
 data/raw/
+# 导入日志
+data/*.log
 
-# backend
+# =============================================================================
+# Backend (Spring Boot / Maven / Java)
+# =============================================================================
 backend/target/
-backend/.mvn/
-*.class
+backend/.mvn/wrapper/maven-wrapper.jar
 
-# frontend
+# Java 编译产物
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# Maven
+backend/.mvn/
+backend/mvnw
+backend/mvnw.cmd
+
+# Spring Boot 本地配置（含密码等敏感信息）
+backend/src/main/resources/application-local.yml
+backend/src/main/resources/application-local.properties
+
+# Eclipse/STS 工程文件
+backend/.classpath
+backend/.project
+backend/.settings/
+backend/*.launch
+
+# =============================================================================
+# Frontend (Vue3 + Vite + TypeScript)
+# =============================================================================
 frontend/node_modules/
 frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
 
-# IDE / OS
+# 环境变量（含敏感 key，仅保留 .env.development 示例）
+frontend/.env.local
+frontend/.env.*.local
+
+# TypeScript 增量编译缓存
+frontend/*.tsbuildinfo
+
+# Vite / Rollup 日志
+frontend/vite.config.ts.timestamp-*
+
+# 日志文件
+frontend/logs/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+# =============================================================================
+# Docker
+# =============================================================================
+# 本地 Docker volume 数据目录（如挂载到项目内）
+docker/pgdata/
+docker/*.env
+# 不忽略 docker-compose.yml（版本控制所需）
+
+# =============================================================================
+# IDE / Editor
+# =============================================================================
+# IntelliJ IDEA
 .idea/
-.vscode/
+*.iml
+*.iws
+*.ipr
+out/
+
+# VS Code（保留团队共享的扩展推荐）
+.vscode/*
+!.vscode/extensions.json
+
+# Eclipse
+.classpath
+.project
+.settings/
+*.launch
+
+# =============================================================================
+# OS
+# =============================================================================
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# =============================================================================
+# Misc
+# =============================================================================
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# 证书 / 密钥
+*.pem
+*.key
+*.p12
+*.jks

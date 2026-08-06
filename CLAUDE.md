@@ -33,9 +33,13 @@ CORS is restricted to `http://localhost:5173` in `config/CorsConfig.java`.
 
 `osm_boundaries` (MultiPolygon, admin boundaries) and `osm_pois` (Point, POIs with many sparse OSM tag columns) — both created by `ogr2ogr` from GeoJSON, geometry column named `geom` (not the ogr2ogr default `wkb_geometry` — imports explicitly pass `-lco GEOMETRY_NAME=geom`), SRID 4326. The OSM id is in a column literally named `id` (e.g. `"node/123"`, `"relation/456"`), not `osm_id`.
 
+`osm_forests` (MultiPolygon, 林地/绿地面) — created by `import_forest_to_postgis.sh`; includes a `category` column (forest/wood/grass/park/other) added by the Python filter step. `osm_forest_pois` (Point, 林业相关节点) — nurseries, botanical gardens, trees, etc.
+
 ### Frontend (`frontend/`)
 
-Single page, no router/Pinia (intentionally — add them only when the app actually grows past one view). `src/api/gisApi.ts` wraps the two backend endpoints; `src/components/MapView.vue` owns the MapLibre instance and adds GeoJSON sources/layers on `map.on('load')`. Base style is the public `https://demotiles.maplibre.org/style.json` (no API key needed) — swap this out deliberately if upgrading the basemap, not as a side effect of another change.
+Single page, no router/Pinia (intentionally — add them only when the app actually grows past one view). `src/api/gisApi.ts` wraps backend endpoints; `src/components/MapView.vue` owns the MapLibre instance and adds GeoJSON sources/layers on `map.on('load')`. Base style is the public `https://demotiles.maplibre.org/style.json` (no API key needed) — swap this out deliberately if upgrading the basemap, not as a side effect of another change.
+
+Forestry additions: `forests-fill`/`forests-line` layers render `osm_forests` polygons with a `match` expression keyed on `category`. `forest-pois-circle` renders `osm_forest_pois`. Both have click Popups. A layer-toggle panel (top-left) and a statistics panel (bottom-left) are rendered as `position:absolute` overlays in the Vue template.
 
 ## Commands
 
@@ -44,8 +48,12 @@ Single page, no router/Pinia (intentionally — add them only when the app actua
 cd docker && docker compose up -d
 
 # Data: fetch + import (only needed when re-pulling/changing the OSM dataset)
-data/scripts/fetch_osm_shushan.sh      # Overpass API -> data/raw/*.json
-data/scripts/import_to_postgis.sh      # osmtogeojson + ogr2ogr -> PostGIS tables
+data/scripts/fetch_osm_shushan.sh      # Overpass API -> data/raw/*.json (boundary + amenity POI + buildings)
+data/scripts/import_to_postgis.sh      # osmtogeojson + ogr2ogr -> osm_boundaries / osm_pois
+
+# 林业数据（新增）
+data/scripts/fetch_forest_data.sh      # 抓取林地面 + 林业POI -> data/raw/shushan_forests*.json
+data/scripts/import_forest_to_postgis.sh  # 导入 -> osm_forests / osm_forest_pois
 
 # Backend
 cd backend && mvn spring-boot:run      # serves on :8080
@@ -71,6 +79,13 @@ docker exec -it webgis-postgis psql -U webgis -d webgis -c \
   "SELECT name, ST_GeometryType(geom), ST_SRID(geom) FROM osm_boundaries;"
 ```
 
-## Roadmap (not yet implemented)
+## Roadmap
 
-Stage 2: vector tiles (pg_tileserv/Martin). Stage 3: choropleth styling. Stage 4: Cesium 3D building extrusion (building footprints are already fetched into `data/raw/shushan_buildings.json` but not yet imported — Overpass rate-limits this query, re-fetch may be needed). Stage 5: interactive spatial queries (`ST_DWithin`), this is where JTS gets introduced on the backend. Stage 6: performance (GIST indexes, viewport-based bbox loading).
+**Stage 2 ✅ 向量瓦片（Martin）** — `docker/docker-compose.yml` 新增 `martin` 服务（port 3000）。`frontend/src/composables/useVectorTiles.ts` 在 Martin 在线时自动将 `forests`/`forest-pois` 图层切换为 vector source，离线时静默保持 GeoJSON fallback。图层控制面板底部有"⚡ 向量瓦片模式 / 📦 GeoJSON 模式"badge 显示当前状态。Martin catalog: `http://localhost:3000/catalog`，瓦片: `http://localhost:3000/{table}/{z}/{x}/{y}`。
+
+**Stage 3 ✅ 街道绿化率空间分析与分级专题图 (Choropleth Styling)** — 新增数据脚本 `fetch_subdistricts.sh` 抓取蜀山区 24 个街道/镇边界 (`osm_subdistricts`)。在 PostGIS 中使用 `ST_Intersection(s.geom, f.geom)` 进行空间求交和面积计算，得出各街道的绿地交集面积和绿化覆盖率 (%)。后端提供 `/api/subdistricts/choropleth`，前端渲染渐变分级专题图层、色带图例以及街道空间分析 Popup。
+
+**Stage 4 ✅ 3D 建筑物白模拉伸与三维视图拓展 (3D Building Extrusion)** — 新增数据脚本 `fetch_buildings.sh` 抓取蜀山区 4,674 个建筑物 Footprint (`osm_buildings`)。导入脚本自动解析建筑物层数 `building:levels` / 高度 `height`，并在 PostGIS 中建立空间索引。Martin 自动提供矢量瓦片 `osm_buildings`，MapLibre 前端渲染 `fill-extrusion` 三维白模图层；顶部增加 `🏙️ 3D 俯瞰视角 / 🗺️ 2D 正投视角` 相机倾角 (pitch=60°) 动画切换按钮。
+
+Stage 5: interactive spatial queries (`ST_DWithin`), this is where JTS gets introduced on the backend. Stage 6: performance (GIST indexes, viewport-based bbox loading).
+
