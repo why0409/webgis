@@ -10,8 +10,11 @@ import {
   fetchForestPois,
   fetchSubdistrictChoropleth,
   fetchBuildings,
+  fetchNearbyForests,
+  fetchNearbyForestPois,
   type ForestStat
 } from '../api/gisApi'
+import type { FeatureCollection } from 'geojson'
 import { useVectorTiles } from '../composables/useVectorTiles'
 
 // ── 地图容器 ──────────────────────────────────────────────────
@@ -36,6 +39,126 @@ function toggle3DView() {
     map.easeTo({ pitch: 60, bearing: -20, duration: 1200 })
   } else {
     map.easeTo({ pitch: 0, bearing: 0, duration: 1200 })
+  }
+}
+
+// ── Stage 5: 空间探针与缓冲区分析 (Spatial Probe) ────────────────
+const isProbeActive = ref(false)
+const probeRadius = ref(1000)
+const probeCenter = ref<[number, number] | null>(null)
+const probeResults = ref<Array<{
+  name: string
+  category: string
+  distance_m: number
+  area_ha: number
+  osm_id: string
+}>>([])
+const probePois = ref<Array<{
+  name: string
+  poi_type: string
+  distance_m: number
+  osm_id: string
+}>>([])
+const probeLoading = ref(false)
+
+function toggleProbeMode() {
+  isProbeActive.value = !isProbeActive.value
+  if (!map) return
+  map.getCanvas().style.cursor = isProbeActive.value ? 'crosshair' : ''
+}
+
+async function runProbeQuery(lng: number, lat: number) {
+  if (!map) return
+  probeCenter.value = [lng, lat]
+  probeLoading.value = true
+
+  updateBufferCircleLayer(lng, lat, probeRadius.value)
+
+  try {
+    const [forestsRes, poisRes] = await Promise.all([
+      fetchNearbyForests(lng, lat, probeRadius.value),
+      fetchNearbyForestPois(lng, lat, probeRadius.value)
+    ])
+
+    probeResults.value = forestsRes.features.map(f => ({
+      name: (f.properties?.name as string) || '未命名绿地',
+      category: (f.properties?.category as string) || 'other',
+      distance_m: Number(f.properties?.distance_m || 0),
+      area_ha: Number(f.properties?.area_ha || 0),
+      osm_id: (f.properties?.osm_id as string) || ''
+    }))
+
+    probePois.value = poisRes.features.map(f => ({
+      name: (f.properties?.name as string) || '未命名节点',
+      poi_type: (f.properties?.poi_type as string) || 'forest_poi',
+      distance_m: Number(f.properties?.distance_m || 0),
+      osm_id: (f.properties?.osm_id as string) || ''
+    }))
+  } catch (err) {
+    console.error('[ProbeQuery] 空间检索失败:', err)
+  } finally {
+    probeLoading.value = false
+  }
+}
+
+function updateBufferCircleLayer(lng: number, lat: number, radiusMeters: number) {
+  if (!map) return
+  const points = 64
+  const coords: [number, number][] = []
+  const km = radiusMeters / 1000
+  const distanceX = km / (111.32 * Math.cos(lat * Math.PI / 180))
+  const distanceY = km / 110.574
+
+  for (let i = 0; i < points; i++) {
+    const theta = (i / points) * (2 * Math.PI)
+    const x = lng + distanceX * Math.cos(theta)
+    const y = lat + distanceY * Math.sin(theta)
+    coords.push([x, y])
+  }
+  coords.push(coords[0])
+
+  const circleGeoJSON: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [coords]
+      }
+    }]
+  }
+
+  if (map.getSource('probe-buffer')) {
+    (map.getSource('probe-buffer') as maplibregl.GeoJSONSource).setData(circleGeoJSON)
+  } else {
+    map.addSource('probe-buffer', { type: 'geojson', data: circleGeoJSON })
+    map.addLayer({
+      id: 'probe-buffer-fill',
+      type: 'fill',
+      source: 'probe-buffer',
+      paint: {
+        'fill-color': '#38bdf8',
+        'fill-opacity': 0.18
+      }
+    })
+    map.addLayer({
+      id: 'probe-buffer-line',
+      type: 'line',
+      source: 'probe-buffer',
+      paint: {
+        'line-color': '#0284c7',
+        'line-width': 2,
+        'line-dasharray': [3, 2]
+      }
+    })
+  }
+}
+
+function changeRadius(r: number) {
+  probeRadius.value = r
+  if (probeCenter.value) {
+    runProbeQuery(probeCenter.value[0], probeCenter.value[1])
   }
 }
 
@@ -108,6 +231,13 @@ onMounted(async () => {
   })
 
   map.addControl(new maplibregl.NavigationControl(), 'top-right')
+
+  // 地图点击空间探针事件
+  map.on('click', (e) => {
+    if (isProbeActive.value) {
+      runProbeQuery(e.lngLat.lng, e.lngLat.lat)
+    }
+  })
 
   map.on('load', async () => {
     // ── A. 行政边界 ──────────────────────────────────────────
@@ -422,10 +552,13 @@ onMounted(async () => {
 <template>
   <div class="page-wrapper">
 
-    <!-- ── 顶部 2D / 3D 视角切换按钮 ────────────────────────────── -->
+    <!-- ── 顶部 2D / 3D 视角切换与空间探针工具栏 ──────────────── -->
     <div class="view-mode-bar">
       <button class="view-btn" :class="{ active: is3D }" @click="toggle3DView">
         {{ is3D ? '🏙️ 3D 俯瞰视角' : '🗺️ 2D 正投视角' }}
+      </button>
+      <button class="view-btn probe-btn" :class="{ active: isProbeActive }" @click="toggleProbeMode">
+        {{ isProbeActive ? '🎯 探针模式已开启 (点击地图)' : '🎯 空间缓冲区探针' }}
       </button>
     </div>
 
@@ -555,6 +688,62 @@ onMounted(async () => {
       </template>
     </div>
 
+    <!-- ── Stage 5: 空间探针检索结果面板 ────────────────────────── -->
+    <div v-if="isProbeActive && probeCenter" class="probe-panel">
+      <div class="panel-title">🎯 空间缓冲区检索结果</div>
+
+      <div class="probe-target-info">
+        中心点: <code>{{ probeCenter[0].toFixed(4) }}, {{ probeCenter[1].toFixed(4) }}</code>
+      </div>
+
+      <!-- 半径切换 -->
+      <div class="radius-selector">
+        <span class="radius-label">检索半径:</span>
+        <button
+          v-for="r in [500, 1000, 2000, 5000]"
+          :key="r"
+          class="radius-btn"
+          :class="{ active: probeRadius === r }"
+          @click="changeRadius(r)"
+        >
+          {{ r >= 1000 ? `${r/1000}km` : `${r}m` }}
+        </button>
+      </div>
+
+      <div v-if="probeLoading" class="stats-loading">正在计算空间距离与求交…</div>
+
+      <template v-else>
+        <div class="probe-section-title">🌲 周边绿地/林地 ({{ probeResults.length }})</div>
+        <div v-if="probeResults.length === 0" class="stats-empty">半径 {{ probeRadius }}m 内无绿地</div>
+        <div v-else class="probe-list">
+          <div v-for="(item, idx) in probeResults.slice(0, 10)" :key="idx" class="probe-item">
+            <div class="probe-item-header">
+              <span class="cat-dot" :style="{ background: CATEGORY_COLOR[item.category] ?? '#888' }"></span>
+              <span class="probe-name">{{ item.name }}</span>
+              <span class="probe-dist">{{ item.distance_m }}m</span>
+            </div>
+            <div class="probe-item-detail">
+              <span>{{ CATEGORY_LABEL[item.category] ?? item.category }}</span>
+              <span>{{ item.area_ha.toFixed(2) }} 公顷</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="probePois.length > 0" class="probe-section-title" style="margin-top:12px">
+          📍 周边林业 POI ({{ probePois.length }})
+        </div>
+        <div v-if="probePois.length > 0" class="probe-list">
+          <div v-for="(poi, idx) in probePois.slice(0, 6)" :key="idx" class="probe-item">
+            <div class="probe-item-header">
+              <span class="poi-dot" style="background:#00e676"></span>
+              <span class="probe-name">{{ poi.name }}</span>
+              <span class="probe-dist">{{ poi.distance_m }}m</span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
   </div>
 </template>
 
@@ -603,6 +792,118 @@ onMounted(async () => {
   border-color: #38bdf8;
   color: #ffffff;
   box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+}
+
+.probe-btn {
+  margin-left: 8px;
+}
+.probe-btn.active {
+  background: linear-gradient(135deg, #0284c7, #0d9488);
+  border-color: #38bdf8;
+}
+
+/* ── 空间探针结果面板 ──────────────────────────────────────── */
+.probe-panel {
+  position: absolute;
+  top: 70px;
+  right: 16px;
+  min-width: 280px;
+  max-width: 320px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  background: rgba(15, 20, 30, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #e2e8f0;
+  font-size: 13px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+
+.probe-target-info {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 10px;
+}
+
+.radius-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.radius-label {
+  font-size: 11px;
+  color: #64748b;
+}
+.radius-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.radius-btn.active {
+  background: #0284c7;
+  color: #fff;
+  border-color: #38bdf8;
+}
+
+.probe-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.probe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.probe-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.probe-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.probe-name {
+  font-weight: 500;
+  color: #f1f5f9;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.probe-dist {
+  font-size: 11px;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.probe-item-detail {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 3px;
 }
 
 /* ── 通用面板基础样式 ──────────────────────────────────────── */

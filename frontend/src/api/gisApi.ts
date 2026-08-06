@@ -50,4 +50,17 @@ export async function fetchBuildings(): Promise<FeatureCollection> {
   return res.json()
 }
 
+/** Stage 5: 空间缓冲区探针检索（附近林地/绿地） */
+export async function fetchNearbyForests(lng: number, lat: number, radius = 1000): Promise<FeatureCollection> {
+  const res = await fetch(`${BASE}/api/spatial/nearby/forests?lng=${lng}&lat=${lat}&radius=${radius}`)
+  return res.json()
+}
+
+/** Stage 5: 空间缓冲区探针检索（附近林业 POI） */
+export async function fetchNearbyForestPois(lng: number, lat: number, radius = 1000): Promise<FeatureCollection> {
+  const res = await fetch(`${BASE}/api/spatial/nearby/pois?lng=${lng}&lat=${lat}&radius=${radius}`)
+  return res.json()
+}
+
+
 

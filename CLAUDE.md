@@ -87,5 +87,15 @@ docker exec -it webgis-postgis psql -U webgis -d webgis -c \
 
 **Stage 4 ✅ 3D 建筑物白模拉伸与三维视图拓展 (3D Building Extrusion)** — 新增数据脚本 `fetch_buildings.sh` 抓取蜀山区 4,674 个建筑物 Footprint (`osm_buildings`)。导入脚本自动解析建筑物层数 `building:levels` / 高度 `height`，并在 PostGIS 中建立空间索引。Martin 自动提供矢量瓦片 `osm_buildings`，MapLibre 前端渲染 `fill-extrusion` 三维白模图层；顶部增加 `🏙️ 3D 俯瞰视角 / 🗺️ 2D 正投视角` 相机倾角 (pitch=60°) 动画切换按钮。
 
-Stage 5: interactive spatial queries (`ST_DWithin`), this is where JTS gets introduced on the backend. Stage 6: performance (GIST indexes, viewport-based bbox loading).
+**Stage 5 ✅ 交互式空间探针与 JTS 缓冲区查询 (Spatial Probe & ST_DWithin Queries)** — 在后端引入 JTS (Java Topology Suite `org.locationtech.jts`) 库构造 WGS84 几何点对象，结合 PostGIS `ST_DWithin` & `ST_Distance` 在地理坐标系下计算米级精确大圆距离。后端提供 `/api/spatial/nearby/forests` & `/api/spatial/nearby/pois`，支持多半径（500m / 1km / 2km / 5km）探针检索；前端新增 `🎯 空间缓冲区探针` 模式，支持点击地图任意位置实时生成半透明地理缓冲区圆圈、高亮显示周边绿地/林业 POI 并排序输出真实测地距离 ($d$ 米)。
+
+## 🔮 未来扩展路线 (Future Roadmap)
+
+1. **Stage 6：极速性能优化 (GIST Spatial Index & Viewport BBOX Lazy Loading)**
+   - 后端接口引入 `ST_Intersects(geom, ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326))` 视口 BBOX 按需加载，避免地图大屏全量数据传输。
+2. **Stage 7：林业遥感与多源数据接入 (Remote Sensing & Satellite Imagery Overlay)**
+   - 接入 Sentinel-2 / Landsat 遥感 NDVI 植被指数切片，支持 2D/3D 地图上的遥感图像与 OSM 绿地图层对比分析。
+3. **Stage 8：空间缓冲区与林地相交覆盖分析 (Multi-Criteria Land Use Overlay)**
+   - 支持自定义多边形圈选（Draw Tool），在线计算框选区域内的林地类型比例、碳汇估算（Carbon Stock Estimate）与树种分布统计。
+
 
