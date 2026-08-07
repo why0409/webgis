@@ -98,7 +98,16 @@ public class ForestRepository {
      * Stage 6: 视口 BBOX 按需空间查询
      * 使用 PostGIS ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326) 走 GIST 空间索引过滤当前视口内要素
      */
-    public List<GeoJsonFeature> findByBbox(double minLng, double minLat, double maxLng, double maxLat) {
+    /**
+     * Stage 6: 视口 BBOX 按需空间查询
+     * 使用 PostGIS ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326) 走 GIST 空间索引过滤当前视口内要素
+     */
+    public List<GeoJsonFeature> findByBbox(double lng1, double lat1, double lng2, double lat2) {
+        double minLng = Math.min(lng1, lng2);
+        double maxLng = Math.max(lng1, lng2);
+        double minLat = Math.min(lat1, lat2);
+        double maxLat = Math.max(lat1, lat2);
+
         String sql = """
                 SELECT name, category, landuse, leisure, "natural",
                        id AS osm_id,
@@ -108,7 +117,6 @@ public class ForestRepository {
                 WHERE geom IS NOT NULL
                   AND ST_Intersects(geom, ST_MakeEnvelope(?, ?, ?, ?, 4326))
                 ORDER BY ST_Area(geom) DESC
-                LIMIT 1000
                 """;
         return jdbcTemplate.query(sql, (rs, rowNum) -> {
             Map<String, Object> properties = new LinkedHashMap<>();

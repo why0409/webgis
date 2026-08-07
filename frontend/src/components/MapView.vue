@@ -318,17 +318,23 @@ async function fetchBboxImmediately() {
   if (bboxDebounceTimer) clearTimeout(bboxDebounceTimer)
 
   const bounds = map.getBounds()
-  const west  = bounds.getWest()
-  const south = bounds.getSouth()
-  const east  = bounds.getEast()
-  const north = bounds.getNorth()
+  const w = bounds.getWest()
+  const s = bounds.getSouth()
+  const e = bounds.getEast()
+  const n = bounds.getNorth()
+
+  const minLng = Math.min(w, e)
+  const maxLng = Math.max(w, e)
+  const minLat = Math.min(s, n)
+  const maxLat = Math.max(s, n)
 
   // 绘制/实时更新 BBOX 视口边界金黄色虚线矩形框
-  updateBboxRectLayer(west, south, east, north)
+  updateBboxRectLayer(minLng, minLat, maxLng, maxLat)
 
   try {
-    const data = await fetchForestsByBbox(west, south, east, north)
-    bboxFeatureCount.value = data.features ? data.features.length : 0
+    const data = await fetchForestsByBbox(minLng, minLat, maxLng, maxLat)
+    const cnt = data.features ? data.features.length : 0
+    bboxFeatureCount.value = cnt
 
     ensureGeoJsonForestLayers()
     if (map.getSource('forests-bbox')) {
