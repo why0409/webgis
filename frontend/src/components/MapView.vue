@@ -190,16 +190,71 @@ function updateCurrentZoom() {
   }
 }
 
+function ensureGeoJsonForestLayers() {
+  if (!map) return
+  if (!map.getSource('forests-bbox')) {
+    map.addSource('forests-bbox', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    })
+    map.addLayer({
+      id: 'forests-geojson-fill',
+      type: 'fill',
+      source: 'forests-bbox',
+      paint: {
+        'fill-color': [
+          'match', ['get', 'category'],
+          'forest', CATEGORY_COLOR.forest,
+          'wood',   CATEGORY_COLOR.wood,
+          'grass',  CATEGORY_COLOR.grass,
+          'park',   CATEGORY_COLOR.park,
+          CATEGORY_COLOR.other
+        ],
+        'fill-opacity': 0.55
+      }
+    })
+    map.addLayer({
+      id: 'forests-geojson-line',
+      type: 'line',
+      source: 'forests-bbox',
+      paint: {
+        'line-color': '#0284c7',
+        'line-width': 1.5
+      }
+    })
+  } else {
+    if (map.getLayer('forests-geojson-fill')) map.setLayoutProperty('forests-geojson-fill', 'visibility', 'visible')
+    if (map.getLayer('forests-geojson-line')) map.setLayoutProperty('forests-geojson-line', 'visibility', 'visible')
+  }
+}
+
 function toggleBboxMode() {
   isBboxMode.value = !isBboxMode.value
+  if (!map) return
+
   if (isBboxMode.value) {
-    // 若当前处在全区宏观视角 (Zoom < 13)，自动放大至局部以完美体验 BBOX 视口切片效果
-    if (map && map.getZoom() < 13) {
+    // 隐藏 Martin 向量瓦片与常规 GeoJSON 图层，切为专属视口切片图层
+    if (map.getLayer('forests-fill')) map.setLayoutProperty('forests-fill', 'visibility', 'none')
+    if (map.getLayer('forests-line')) map.setLayoutProperty('forests-line', 'visibility', 'none')
+
+    ensureGeoJsonForestLayers()
+
+    // 若处在宏观全视角，自动推近聚焦
+    if (map.getZoom() < 13) {
       map.flyTo({ zoom: 13.5, duration: 1000 })
     }
     fetchBboxImmediately()
   } else {
-    reloadAllForests()
+    // 隐藏 BBOX 图层，还原 Martin / 原图层
+    if (map.getLayer('forests-geojson-fill')) map.setLayoutProperty('forests-geojson-fill', 'visibility', 'none')
+    if (map.getLayer('forests-geojson-line')) map.setLayoutProperty('forests-geojson-line', 'visibility', 'none')
+
+    if (map.getLayer('forests-fill')) map.setLayoutProperty('forests-fill', 'visibility', 'visible')
+    if (map.getLayer('forests-line')) map.setLayoutProperty('forests-line', 'visibility', 'visible')
+
+    if (!isTileMode.value) {
+      reloadAllForests()
+    }
   }
 }
 
@@ -216,8 +271,10 @@ async function fetchBboxImmediately() {
   try {
     const data = await fetchForestsByBbox(west, south, east, north)
     bboxFeatureCount.value = data.features ? data.features.length : 0
-    if (map.getSource('forests')) {
-      (map.getSource('forests') as maplibregl.GeoJSONSource).setData(data)
+
+    ensureGeoJsonForestLayers()
+    if (map.getSource('forests-bbox')) {
+      (map.getSource('forests-bbox') as maplibregl.GeoJSONSource).setData(data)
     }
   } catch (err) {
     console.error('[BBOX] 视口查询失败:', err)
