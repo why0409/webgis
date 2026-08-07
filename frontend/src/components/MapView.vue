@@ -276,6 +276,45 @@ function setBasemap(type: BasemapType) {
   }
 }
 
+// ── 设施 POI 分类子图层过滤控制 ──────────────────────────────────
+const poiCategories = reactive({
+  food: true,
+  education: true,
+  medical: true,
+  finance: true,
+  gov: true,
+  transport: true,
+  entertainment: true,
+  public: true
+})
+
+const CAT_AMENITIES: Record<string, string[]> = {
+  food:          ['restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court'],
+  finance:       ['bank', 'atm', 'post_office'],
+  education:     ['college', 'university', 'school', 'kindergarten', 'research_institute', 'library'],
+  medical:       ['hospital', 'clinic', 'pharmacy', 'dentist', 'doctors', 'public_bath'],
+  transport:     ['parking', 'charging_station', 'car_wash', 'fuel', 'taxi'],
+  gov:           ['townhall', 'police', 'fire_station', 'courthouse', 'embassy'],
+  entertainment: ['cinema', 'theatre', 'exhibition_centre', 'community_centre', 'arts_centre'],
+  public:        ['toilets', 'shelter', 'fountain', 'internet_cafe']
+}
+
+function updatePoiFilter() {
+  if (!map || !map.getLayer('pois-circle')) return
+  const activeAmenities: string[] = []
+  for (const [cat, enabled] of Object.entries(poiCategories)) {
+    if (enabled && CAT_AMENITIES[cat]) {
+      activeAmenities.push(...CAT_AMENITIES[cat])
+    }
+  }
+
+  if (activeAmenities.length === 0) {
+    map.setFilter('pois-circle', ['==', ['get', 'amenity'], ''])
+  } else {
+    map.setFilter('pois-circle', ['in', ['get', 'amenity'], ['literal', activeAmenities]])
+  }
+}
+
 // ── Stage 2: 向量瓦片（延迟初始化，map ready 后才能用） ─────
 let isTileMode = ref(false)
 
@@ -449,15 +488,23 @@ onMounted(async () => {
     })
 
     // ── D. 设施 POI（按 amenity 类型分色） ──────────────────────
-    // 分组色彩方案：
-    //   餐饮 orange | 金融 purple | 教育 sky | 医疗 red
-    //   交通 slate  | 政务 indigo | 公共 teal | 娱乐 amber
     const pois = await fetchPois()
     map!.addSource('pois', { type: 'geojson', data: pois })
     map!.addLayer({
       id: 'pois-circle',
       type: 'circle',
       source: 'pois',
+      minzoom: 12,
+      filter: ['in', ['get', 'amenity'], ['literal', [
+        'restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court',
+        'bank', 'atm', 'post_office',
+        'college', 'university', 'school', 'kindergarten', 'research_institute', 'library',
+        'hospital', 'clinic', 'pharmacy', 'dentist', 'doctors', 'public_bath',
+        'parking', 'charging_station', 'car_wash', 'fuel', 'taxi',
+        'townhall', 'police', 'fire_station', 'courthouse', 'embassy',
+        'cinema', 'theatre', 'exhibition_centre', 'community_centre', 'arts_centre',
+        'toilets', 'shelter', 'fountain', 'internet_cafe'
+      ]]],
       paint: {
         'circle-radius': [
           'match', ['get', 'amenity'],
@@ -741,17 +788,41 @@ onMounted(async () => {
         设施 POI
       </label>
 
-      <!-- 设施 POI 分类图例（仅图层开启时展示） -->
+      <!-- 设施 POI 分类图例与精细控制（仅图层开启时展示） -->
       <div v-if="layers.pois" class="poi-legend">
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#f97316"></span>餐饮</div>
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#0ea5e9"></span>教育</div>
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#ef4444"></span>医疗</div>
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#a855f7"></span>金融</div>
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#4f46e5"></span>政务</div>
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#64748b"></span>交通</div>
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#eab308"></span>娱乐</div>
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#14b8a6"></span>公共</div>
-        <div class="poi-legend-item"><span class="poi-dot" style="background:#94a3b8"></span>其他</div>
+        <div class="poi-legend-hint">💡 放大地图至 z≥12 显示精细点位</div>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.food" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#f97316"></span>餐饮
+        </label>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.education" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#0ea5e9"></span>教育
+        </label>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.medical" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#ef4444"></span>医疗
+        </label>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.finance" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#a855f7"></span>金融
+        </label>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.gov" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#4f46e5"></span>政务
+        </label>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.transport" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#64748b"></span>交通
+        </label>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.entertainment" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#eab308"></span>娱乐
+        </label>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.public" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#14b8a6"></span>公共
+        </label>
       </div>
 
       <!-- 林地图例 -->
@@ -1205,19 +1276,31 @@ onMounted(async () => {
 
 .poi-legend {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 4px 2px;
-  margin: 5px 0 8px;
-  padding: 8px;
-  background: rgba(255,255,255,0.04);
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 8px;
+  background: rgba(0, 0, 0, 0.25);
   border-radius: 6px;
+  padding: 6px 8px;
+  margin: 4px 0 8px;
+}
+.poi-legend-hint {
+  font-size: 10px;
+  color: #94a3b8;
+  grid-column: span 2;
+  margin-bottom: 2px;
 }
 .poi-legend-item {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: 11px;
-  color: #94a3b8;
+  color: #cbd5e1;
+  cursor: pointer;
+  user-select: none;
+}
+.poi-legend-item input[type="checkbox"] {
+  accent-color: #38bdf8;
+  cursor: pointer;
 }
 .poi-dot {
   width: 9px;
