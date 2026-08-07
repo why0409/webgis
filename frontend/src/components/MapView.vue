@@ -186,9 +186,30 @@ let bboxDebounceTimer: any = null
 function toggleBboxMode() {
   isBboxMode.value = !isBboxMode.value
   if (isBboxMode.value) {
-    onViewportChange()
+    fetchBboxImmediately()
   } else {
     reloadAllForests()
+  }
+}
+
+async function fetchBboxImmediately() {
+  if (!map) return
+  if (bboxDebounceTimer) clearTimeout(bboxDebounceTimer)
+
+  const bounds = map.getBounds()
+  const west  = bounds.getWest()
+  const south = bounds.getSouth()
+  const east  = bounds.getEast()
+  const north = bounds.getNorth()
+
+  try {
+    const data = await fetchForestsByBbox(west, south, east, north)
+    bboxFeatureCount.value = data.features ? data.features.length : 0
+    if (map.getSource('forests')) {
+      (map.getSource('forests') as maplibregl.GeoJSONSource).setData(data)
+    }
+  } catch (err) {
+    console.error('[BBOX] 视口查询失败:', err)
   }
 }
 
@@ -196,30 +217,16 @@ async function onViewportChange() {
   if (!map || !isBboxMode.value) return
   if (bboxDebounceTimer) clearTimeout(bboxDebounceTimer)
 
-  bboxDebounceTimer = setTimeout(async () => {
-    const bounds = map!.getBounds()
-    const west  = bounds.getWest()
-    const south = bounds.getSouth()
-    const east  = bounds.getEast()
-    const north = bounds.getNorth()
-
-    try {
-      const data = await fetchForestsByBbox(west, south, east, north)
-      bboxFeatureCount.value = data.features.length
-      if (map!.getSource('forests')) {
-        (map!.getSource('forests') as maplibregl.GeoJSONSource).setData(data)
-      }
-    } catch (err) {
-      console.error('[BBOX] 视口查询失败:', err)
-    }
-  }, 250)
+  bboxDebounceTimer = setTimeout(() => {
+    fetchBboxImmediately()
+  }, 200)
 }
 
 async function reloadAllForests() {
   if (!map) return
   try {
     const data = await fetchForests()
-    bboxFeatureCount.value = data.features.length
+    bboxFeatureCount.value = data.features ? data.features.length : 0
     if (map.getSource('forests')) {
       (map.getSource('forests') as maplibregl.GeoJSONSource).setData(data)
     }
@@ -426,6 +433,7 @@ onMounted(async () => {
 
     // ── B. 林地/绿地面图层（按 category 颜色渲染）────────────
     const forests = await fetchForests()
+    bboxFeatureCount.value = forests.features ? forests.features.length : 0
     map!.addSource('forests', { type: 'geojson', data: forests })
     map!.addLayer({
       id: 'forests-fill',
