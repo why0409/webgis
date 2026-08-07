@@ -91,12 +91,13 @@ docker exec -it webgis-postgis psql -U webgis -d webgis -c \
 
 **Stage 6 ✅ 视口 BBOX 按需加载与极速性能优化 (GIST Spatial Index & Viewport BBOX Lazy Loading)** — 后端增加 `findByBbox` 方法与 `GET /api/forests/bbox` 端点，基于 PostGIS `ST_Intersects(geom, ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326))` 利用 GIST 空间索引实现视口相交过滤；前端增加 `⚡ 视口按需加载 (BBOX)` 开关，防抖监听 MapLibre `moveend` 拖拽/缩放事件，动态获取视口矩形只渲染当前视野内的要素，实时更新并提示视口内要素计数（如 90 个而非全量 1537 个），显著降低网络开销与渲染开销。
 
+**Stage 7 ✅ 林业遥感与多源数据接入 (Remote Sensing & Satellite Imagery Overlay)** — 在 MapLibre 中集成多源栅格底图源（Esri 高清卫星遥感影像 `World_Imagery` 与 Sentinel-2 无云植被遥感 `S2Cloudless`）。图层控制面板新增 `底图与遥感数据源` 单选组（`🗺️ 电子矢量底图` / `🛰️ 高清卫星遥感` / `🌿 Sentinel-2 植被遥感`），支持一键切换并同步渲染 NDVI 植被覆盖度分级色带图例，完美叠加 2D/3D 建筑白模与林地矢量图层。
+
 ## 🔮 未来扩展路线 (Future Roadmap)
 
-1. **Stage 7：林业遥感与多源数据接入 (Remote Sensing & Satellite Imagery Overlay)**
-   - 接入 Sentinel-2 / Landsat 遥感 NDVI 植被指数切片，支持 2D/3D 地图上的遥感图像与 OSM 绿地图层对比分析。
-2. **Stage 8：空间缓冲区与林地相交覆盖分析 (Multi-Criteria Land Use Overlay)**
+1. **Stage 8：空间缓冲区与林地相交覆盖分析 (Multi-Criteria Land Use Overlay)**
    - 支持自定义多边形圈选（Draw Tool），在线计算框选区域内的林地类型比例、碳汇估算（Carbon Stock Estimate）与树种分布统计。
+
 
 
 

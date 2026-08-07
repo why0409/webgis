@@ -257,6 +257,25 @@ let popup: maplibregl.Popup | null = null
 // ── MapLibre 实例（供图层开关使用） ──────────────────────────
 let map: maplibregl.Map | null = null
 
+// ── Stage 7: 多源遥感底图与 NDVI 植被指数 (Remote Sensing Basemaps) ──────
+type BasemapType = 'vector' | 'satellite' | 'ndvi'
+const currentBasemap = ref<BasemapType>('vector')
+
+function setBasemap(type: BasemapType) {
+  currentBasemap.value = type
+  if (!map) return
+
+  const satVis = type === 'satellite' ? 'visible' : 'none'
+  const ndviVis = type === 'ndvi' ? 'visible' : 'none'
+
+  if (map.getLayer('satellite-layer')) {
+    map.setLayoutProperty('satellite-layer', 'visibility', satVis)
+  }
+  if (map.getLayer('ndvi-layer')) {
+    map.setLayoutProperty('ndvi-layer', 'visibility', ndviVis)
+  }
+}
+
 // ── Stage 2: 向量瓦片（延迟初始化，map ready 后才能用） ─────
 let isTileMode = ref(false)
 
@@ -313,6 +332,35 @@ onMounted(async () => {
   })
 
   map.on('load', async () => {
+    // ── Stage 7: 注册遥感栅格底图 (ArcGIS 卫星图 & Sentinel-2 遥感影像) ────
+    map!.addSource('satellite-source', {
+      type: 'raster',
+      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256,
+      attribution: 'Esri World Imagery'
+    })
+    map!.addLayer({
+      id: 'satellite-layer',
+      type: 'raster',
+      source: 'satellite-source',
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 1.0 }
+    })
+
+    map!.addSource('ndvi-source', {
+      type: 'raster',
+      tiles: ['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg'],
+      tileSize: 256,
+      attribution: 'Sentinel-2 Cloudless / EOX'
+    })
+    map!.addLayer({
+      id: 'ndvi-layer',
+      type: 'raster',
+      source: 'ndvi-source',
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 0.95 }
+    })
+
     // ── A. 行政边界 ──────────────────────────────────────────
     const boundary = await fetchShushanBoundary()
     map!.addSource('shushan-boundary', { type: 'geojson', data: boundary })
@@ -713,6 +761,34 @@ onMounted(async () => {
         {{ CATEGORY_LABEL[cat] ?? cat }}
       </div>
 
+      <!-- Stage 7: 遥感与底图模式选择 -->
+      <div class="legend-title" style="margin-top:10px">底图与遥感数据源</div>
+      <div class="basemap-selector">
+        <label class="basemap-radio" :class="{ active: currentBasemap === 'vector' }">
+          <input type="radio" name="basemap" value="vector" v-model="currentBasemap" @change="setBasemap('vector')" />
+          🗺️ 电子矢量底图
+        </label>
+        <label class="basemap-radio" :class="{ active: currentBasemap === 'satellite' }">
+          <input type="radio" name="basemap" value="satellite" v-model="currentBasemap" @change="setBasemap('satellite')" />
+          🛰️ 高清卫星遥感
+        </label>
+        <label class="basemap-radio" :class="{ active: currentBasemap === 'ndvi' }">
+          <input type="radio" name="basemap" value="ndvi" v-model="currentBasemap" @change="setBasemap('ndvi')" />
+          🌿 Sentinel-2 植被遥感
+        </label>
+      </div>
+
+      <!-- NDVI 色带图例 -->
+      <div v-if="currentBasemap === 'ndvi'" class="choropleth-legend">
+        <div class="legend-title" style="margin-top:4px">Sentinel-2 植被覆盖度 (NDVI)</div>
+        <div class="ndvi-bar"></div>
+        <div class="ramp-labels">
+          <span>0.0 (水体/建筑)</span>
+          <span>0.4 (低度)</span>
+          <span>0.8+ (茂密)</span>
+        </div>
+      </div>
+
       <!-- 数据模式 badge -->
       <div class="mode-badge" :class="isTileMode ? 'tile' : 'geojson'">
         {{ isTileMode ? '⚡ 向量瓦片模式' : '📦 GeoJSON 模式' }}
@@ -906,6 +982,48 @@ onMounted(async () => {
   background: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
   border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+/* ── Stage 7: 遥感底图选择器 ───────────────────────────────── */
+.basemap-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 6px;
+}
+
+.basemap-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+.basemap-radio:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.basemap-radio.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 600;
+}
+.basemap-radio input[type="radio"] {
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.ndvi-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #4575b4, #e0f3f8, #fee090, #91cf60, #1a9850);
+  margin: 4px 0 3px;
 }
 
 /* ── 空间探针结果面板 ──────────────────────────────────────── */
