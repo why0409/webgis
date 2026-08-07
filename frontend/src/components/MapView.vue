@@ -61,10 +61,26 @@ const probePois = ref<Array<{
 }>>([])
 const probeLoading = ref(false)
 
+function clearProbeBuffer() {
+  probeCenter.value = null
+  probeResults.value = []
+  probePois.value = []
+  if (!map) return
+  if (map.getSource('probe-buffer')) {
+    (map.getSource('probe-buffer') as maplibregl.GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features: []
+    })
+  }
+}
+
 function toggleProbeMode() {
   isProbeActive.value = !isProbeActive.value
   if (!map) return
   map.getCanvas().style.cursor = isProbeActive.value ? 'crosshair' : ''
+  if (!isProbeActive.value) {
+    clearProbeBuffer()
+  }
 }
 
 async function runProbeQuery(lng: number, lat: number) {
@@ -690,7 +706,10 @@ onMounted(async () => {
 
     <!-- ── Stage 5: 空间探针检索结果面板 ────────────────────────── -->
     <div v-if="isProbeActive && probeCenter" class="probe-panel">
-      <div class="panel-title">🎯 空间缓冲区检索结果</div>
+      <div class="panel-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>🎯 空间缓冲区检索结果</span>
+        <button class="panel-close-btn" @click="toggleProbeMode" title="关闭探针模式并清除图层">✕</button>
+      </div>
 
       <div class="probe-target-info">
         中心点: <code>{{ probeCenter[0].toFixed(4) }}, {{ probeCenter[1].toFixed(4) }}</code>
@@ -826,6 +845,20 @@ onMounted(async () => {
   font-size: 11px;
   color: #94a3b8;
   margin-bottom: 10px;
+}
+
+.panel-close-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+.panel-close-btn:hover {
+  color: #ef4444;
 }
 
 .radius-selector {
