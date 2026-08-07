@@ -190,6 +190,60 @@ function updateCurrentZoom() {
   }
 }
 
+function updateBboxRectLayer(west: number, south: number, east: number, north: number) {
+  if (!map) return
+  const rectGeoJSON: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [west, south],
+          [east, south],
+          [east, north],
+          [west, north],
+          [west, south]
+        ]]
+      }
+    }]
+  }
+
+  if (!map.getSource('bbox-rect')) {
+    map.addSource('bbox-rect', { type: 'geojson', data: rectGeoJSON })
+    map.addLayer({
+      id: 'bbox-rect-fill',
+      type: 'fill',
+      source: 'bbox-rect',
+      paint: {
+        'fill-color': '#fbbf24',
+        'fill-opacity': 0.08
+      }
+    })
+    map.addLayer({
+      id: 'bbox-rect-line',
+      type: 'line',
+      source: 'bbox-rect',
+      paint: {
+        'line-color': '#fbbf24',
+        'line-width': 2.5,
+        'line-dasharray': [4, 3]
+      }
+    })
+  } else {
+    (map.getSource('bbox-rect') as maplibregl.GeoJSONSource).setData(rectGeoJSON)
+    if (map.getLayer('bbox-rect-fill')) map.setLayoutProperty('bbox-rect-fill', 'visibility', 'visible')
+    if (map.getLayer('bbox-rect-line')) map.setLayoutProperty('bbox-rect-line', 'visibility', 'visible')
+  }
+}
+
+function clearBboxRectLayer() {
+  if (!map) return
+  if (map.getLayer('bbox-rect-fill')) map.setLayoutProperty('bbox-rect-fill', 'visibility', 'none')
+  if (map.getLayer('bbox-rect-line')) map.setLayoutProperty('bbox-rect-line', 'visibility', 'none')
+}
+
 function ensureGeoJsonForestLayers() {
   if (!map) return
   if (!map.getSource('forests-bbox')) {
@@ -210,7 +264,7 @@ function ensureGeoJsonForestLayers() {
           'park',   CATEGORY_COLOR.park,
           CATEGORY_COLOR.other
         ],
-        'fill-opacity': 0.55
+        'fill-opacity': 0.6
       }
     })
     map.addLayer({
@@ -219,7 +273,7 @@ function ensureGeoJsonForestLayers() {
       source: 'forests-bbox',
       paint: {
         'line-color': '#0284c7',
-        'line-width': 1.5
+        'line-width': 2
       }
     })
   } else {
@@ -245,7 +299,8 @@ function toggleBboxMode() {
     }
     fetchBboxImmediately()
   } else {
-    // 隐藏 BBOX 图层，还原 Martin / 原图层
+    // 隐藏 BBOX 图层及黄框
+    clearBboxRectLayer()
     if (map.getLayer('forests-geojson-fill')) map.setLayoutProperty('forests-geojson-fill', 'visibility', 'none')
     if (map.getLayer('forests-geojson-line')) map.setLayoutProperty('forests-geojson-line', 'visibility', 'none')
 
@@ -267,6 +322,9 @@ async function fetchBboxImmediately() {
   const south = bounds.getSouth()
   const east  = bounds.getEast()
   const north = bounds.getNorth()
+
+  // 绘制/实时更新 BBOX 视口边界金黄色虚线矩形框
+  updateBboxRectLayer(west, south, east, north)
 
   try {
     const data = await fetchForestsByBbox(west, south, east, north)
@@ -446,7 +504,15 @@ onMounted(async () => {
     }
   })
 
-  // Stage 6: 监听视口平移/缩放，动态更新 BBOX 检索
+  // Stage 6: 实时监听视口平移与缩放，动态更新 BBOX 边界框与切片检索
+  map.on('move', () => {
+    updateCurrentZoom()
+    if (isBboxMode.value && map) {
+      const b = map.getBounds()
+      updateBboxRectLayer(b.getWest(), b.getSouth(), b.getEast(), b.getNorth())
+    }
+  })
+
   map.on('moveend', () => {
     updateCurrentZoom()
     if (isBboxMode.value) {
