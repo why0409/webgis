@@ -23,7 +23,7 @@ const mapContainer = ref<HTMLDivElement>()
 // ── 图层可见性开关 ────────────────────────────────────────────
 const layers = reactive({
   boundary: true,
-  pois: true,
+  pois: false, // 设施 POI 默认不勾选，避免初始视野被图标杂乱干扰
   forests: true,
   forestPois: true,
   choropleth: true,
@@ -289,6 +289,8 @@ const poiCategories = reactive({
   public: true
 })
 
+const onlyNamedPois = ref(true) // 默认仅显示有名称的地标，排除无名杂点
+
 const CAT_AMENITIES: Record<string, string[]> = {
   food:          ['restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court'],
   shop:          ['shop', 'supermarket', 'convenience', 'mall'],
@@ -310,10 +312,14 @@ function updatePoiFilter() {
     }
   }
 
-  if (activeAmenities.length === 0) {
-    map.setFilter('pois-circle', ['==', ['get', 'amenity'], ''])
+  const amenityFilter = activeAmenities.length === 0
+    ? ['==', ['get', 'amenity'], '']
+    : ['in', ['get', 'amenity'], ['literal', activeAmenities]]
+
+  if (onlyNamedPois.value) {
+    map.setFilter('pois-circle', ['all', ['has', 'name'], ['!=', ['get', 'name'], ''], amenityFilter])
   } else {
-    map.setFilter('pois-circle', ['in', ['get', 'amenity'], ['literal', activeAmenities]])
+    map.setFilter('pois-circle', amenityFilter)
   }
 }
 
@@ -489,7 +495,7 @@ onMounted(async () => {
       map!.getCanvas().style.cursor = ''
     })
 
-    // ── D. 设施 POI（按 amenity 类型分色） ──────────────────────
+    // ── D. 设施 POI（按 amenity 类型分色，默认仅显示具名点）──────
     const pois = await fetchPois()
     map!.addSource('pois', { type: 'geojson', data: pois })
     map!.addLayer({
@@ -497,16 +503,22 @@ onMounted(async () => {
       type: 'circle',
       source: 'pois',
       minzoom: 12,
-      filter: ['in', ['get', 'amenity'], ['literal', [
-        'restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court',
-        'bank', 'atm', 'post_office',
-        'college', 'university', 'school', 'kindergarten', 'research_institute', 'library',
-        'hospital', 'clinic', 'pharmacy', 'dentist', 'doctors', 'public_bath',
-        'parking', 'charging_station', 'car_wash', 'fuel', 'taxi',
-        'townhall', 'police', 'fire_station', 'courthouse', 'embassy',
-        'cinema', 'theatre', 'exhibition_centre', 'community_centre', 'arts_centre',
-        'toilets', 'shelter', 'fountain', 'internet_cafe'
-      ]]],
+      layout: { visibility: 'none' },
+      filter: ['all',
+        ['has', 'name'],
+        ['!=', ['get', 'name'], ''],
+        ['in', ['get', 'amenity'], ['literal', [
+          'restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court',
+          'shop', 'supermarket', 'convenience', 'mall',
+          'bank', 'atm', 'post_office',
+          'college', 'university', 'school', 'kindergarten', 'research_institute', 'library',
+          'hospital', 'clinic', 'pharmacy', 'dentist', 'doctors', 'public_bath', 'healthcare',
+          'parking', 'charging_station', 'car_wash', 'fuel', 'taxi',
+          'townhall', 'police', 'fire_station', 'courthouse', 'embassy',
+          'cinema', 'theatre', 'exhibition_centre', 'community_centre', 'arts_centre', 'hotel',
+          'toilets', 'shelter', 'fountain', 'internet_cafe'
+        ]]]
+      ],
       paint: {
         'circle-radius': [
           'match', ['get', 'amenity'],
@@ -794,6 +806,10 @@ onMounted(async () => {
 
       <!-- 设施 POI 分类图例与精细控制（仅图层开启时展示） -->
       <div v-if="layers.pois" class="poi-legend">
+        <label class="poi-named-filter">
+          <input type="checkbox" v-model="onlyNamedPois" @change="updatePoiFilter" />
+          🏷️ 仅显示有名称地标 (排除无名杂点)
+        </label>
         <div class="poi-legend-hint">💡 放大地图至 z≥12 显示精细点位</div>
         <label class="poi-legend-item">
           <input type="checkbox" v-model="poiCategories.food" @change="updatePoiFilter" />
@@ -857,14 +873,30 @@ onMounted(async () => {
         </label>
       </div>
 
-      <!-- NDVI 色带图例 -->
-      <div v-if="currentBasemap === 'ndvi'" class="choropleth-legend">
-        <div class="legend-title" style="margin-top:4px">Sentinel-2 植被覆盖度 (NDVI)</div>
-        <div class="ndvi-bar"></div>
-        <div class="ramp-labels">
-          <span>0.0 (水体/建筑)</span>
-          <span>0.4 (低度)</span>
-          <span>0.8+ (茂密)</span>
+      <!-- NDVI 归一化植被指数专业分级图例 -->
+      <div v-if="currentBasemap === 'ndvi'" class="ndvi-detailed-legend">
+        <div class="legend-title" style="margin-top:6px; color:#38bdf8">🌿 Sentinel-2 植被覆盖度 (NDVI)</div>
+        <div class="ndvi-class-list">
+          <div class="ndvi-class-item">
+            <span class="ndvi-swatch" style="background: #4575b4"></span>
+            <span class="ndvi-label">&lt; 0.1</span>
+            <span class="ndvi-desc">水体 / 建筑群 / 道路</span>
+          </div>
+          <div class="ndvi-class-item">
+            <span class="ndvi-swatch" style="background: #fee090"></span>
+            <span class="ndvi-label">0.1 ~ 0.3</span>
+            <span class="ndvi-desc">裸土 / 稀疏草坪</span>
+          </div>
+          <div class="ndvi-class-item">
+            <span class="ndvi-swatch" style="background: #91cf60"></span>
+            <span class="ndvi-label">0.3 ~ 0.6</span>
+            <span class="ndvi-desc">灌木 / 城市绿地</span>
+          </div>
+          <div class="ndvi-class-item">
+            <span class="ndvi-swatch" style="background: #1a9850"></span>
+            <span class="ndvi-label">&gt; 0.6</span>
+            <span class="ndvi-desc">茂密森林 / 自然保护区</span>
+          </div>
         </div>
       </div>
 
@@ -873,9 +905,20 @@ onMounted(async () => {
         {{ isTileMode ? '⚡ 向量瓦片模式' : '📦 GeoJSON 模式' }}
       </div>
 
-      <!-- Stage 6: BBOX 视口数据计数 badge -->
-      <div v-if="isBboxMode" class="bbox-badge">
-        🎯 视口绿地: {{ bboxFeatureCount }} 个 (PostGIS ST_MakeEnvelope)
+      <!-- Stage 6: BBOX 视口按需加载分析与性能可视化指示器 -->
+      <div v-if="isBboxMode" class="bbox-analytics-box">
+        <div class="bbox-title">⚡ PostGIS ST_MakeEnvelope 视口切片</div>
+        <div class="bbox-metric">
+          <span class="metric-label">视口内渲染:</span>
+          <span class="metric-val" style="color:#fbbf24">{{ bboxFeatureCount }} 个要素</span>
+        </div>
+        <div class="bbox-metric">
+          <span class="metric-label">全区总要素:</span>
+          <span class="metric-val">1,537 个要素</span>
+        </div>
+        <div class="bbox-savings">
+          🔥 节省 <strong style="color:#00e676">{{ Math.round((1 - bboxFeatureCount / 1537) * 100) }}%</strong> 传输与渲染压力
+        </div>
       </div>
     </div>
 
@@ -1063,7 +1106,7 @@ onMounted(async () => {
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
-/* ── Stage 7: 遥感底图选择器 ───────────────────────────────── */
+/* ── Stage 7: 遥感底图选择器 & NDVI 详细图例 ───────────────── */
 .basemap-selector {
   display: flex;
   flex-direction: column;
@@ -1098,11 +1141,93 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-.ndvi-bar {
-  height: 8px;
+.ndvi-detailed-legend {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0 8px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.ndvi-class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.ndvi-class-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.ndvi-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ndvi-label {
+  font-weight: 600;
+  color: #cbd5e1;
+  width: 54px;
+}
+
+.ndvi-desc {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+/* ── Stage 6 BBOX 分析面板 ───────────────────────────────────── */
+.bbox-analytics-box {
+  margin-top: 8px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.bbox-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fbbf24;
+  margin-bottom: 4px;
+}
+
+.bbox-metric {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #cbd5e1;
+  margin-bottom: 2px;
+}
+
+.bbox-savings {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.poi-named-filter {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #38bdf8;
+  padding: 3px 6px;
+  background: rgba(56, 189, 248, 0.1);
   border-radius: 4px;
-  background: linear-gradient(to right, #4575b4, #e0f3f8, #fee090, #91cf60, #1a9850);
-  margin: 4px 0 3px;
+  cursor: pointer;
+  user-select: none;
+}
+.poi-named-filter input[type="checkbox"] {
+  accent-color: #38bdf8;
 }
 
 /* ── 空间探针结果面板 ──────────────────────────────────────── */
