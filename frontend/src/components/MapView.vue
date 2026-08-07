@@ -181,11 +181,22 @@ function changeRadius(r: number) {
 // ── Stage 6: 视口 BBOX 按需加载 (Viewport Lazy Loading) ─────────
 const isBboxMode = ref(false)
 const bboxFeatureCount = ref(0)
+const currentZoom = ref(11)
 let bboxDebounceTimer: any = null
+
+function updateCurrentZoom() {
+  if (map) {
+    currentZoom.value = Number(map.getZoom().toFixed(1))
+  }
+}
 
 function toggleBboxMode() {
   isBboxMode.value = !isBboxMode.value
   if (isBboxMode.value) {
+    // 若当前处在全区宏观视角 (Zoom < 13)，自动放大至局部以完美体验 BBOX 视口切片效果
+    if (map && map.getZoom() < 13) {
+      map.flyTo({ zoom: 13.5, duration: 1000 })
+    }
     fetchBboxImmediately()
   } else {
     reloadAllForests()
@@ -380,6 +391,7 @@ onMounted(async () => {
 
   // Stage 6: 监听视口平移/缩放，动态更新 BBOX 检索
   map.on('moveend', () => {
+    updateCurrentZoom()
     if (isBboxMode.value) {
       onViewportChange()
     }
@@ -918,6 +930,10 @@ onMounted(async () => {
       <div v-if="isBboxMode" class="bbox-analytics-box">
         <div class="bbox-title">⚡ PostGIS ST_MakeEnvelope 视口切片</div>
         <div class="bbox-metric">
+          <span class="metric-label">当前地图层级:</span>
+          <span class="metric-val" style="color:#38bdf8">Zoom {{ currentZoom }}</span>
+        </div>
+        <div class="bbox-metric">
           <span class="metric-label">视口内渲染:</span>
           <span class="metric-val" style="color:#fbbf24">{{ bboxFeatureCount }} 个要素</span>
         </div>
@@ -925,8 +941,11 @@ onMounted(async () => {
           <span class="metric-label">全区总要素:</span>
           <span class="metric-val">1,537 个要素</span>
         </div>
-        <div class="bbox-savings">
-          🔥 节省 <strong style="color:#00e676">{{ Math.round((1 - bboxFeatureCount / 1537) * 100) }}%</strong> 传输与渲染压力
+        <div class="bbox-savings" v-if="currentZoom < 12">
+          💡 当前属于全区宏观视角 (Zoom {{ currentZoom }})。<strong>请双击或放大地图至局部 (Zoom ≥ 13)</strong> 查看精细视口切片！
+        </div>
+        <div class="bbox-savings" v-else>
+          🔥 视口局部切片：动态节省 <strong style="color:#00e676">{{ Math.round((1 - bboxFeatureCount / 1537) * 100) }}%</strong> 传输与渲染压力
         </div>
       </div>
     </div>
