@@ -178,6 +178,56 @@ function changeRadius(r: number) {
   }
 }
 
+// ── Stage 6: 视口 BBOX 按需加载 (Viewport Lazy Loading) ─────────
+const isBboxMode = ref(false)
+const bboxFeatureCount = ref(0)
+let bboxDebounceTimer: any = null
+
+function toggleBboxMode() {
+  isBboxMode.value = !isBboxMode.value
+  if (isBboxMode.value) {
+    onViewportChange()
+  } else {
+    reloadAllForests()
+  }
+}
+
+async function onViewportChange() {
+  if (!map || !isBboxMode.value) return
+  if (bboxDebounceTimer) clearTimeout(bboxDebounceTimer)
+
+  bboxDebounceTimer = setTimeout(async () => {
+    const bounds = map!.getBounds()
+    const west  = bounds.getWest()
+    const south = bounds.getSouth()
+    const east  = bounds.getEast()
+    const north = bounds.getNorth()
+
+    try {
+      const data = await fetchForestsByBbox(west, south, east, north)
+      bboxFeatureCount.value = data.features.length
+      if (map!.getSource('forests')) {
+        (map!.getSource('forests') as maplibregl.GeoJSONSource).setData(data)
+      }
+    } catch (err) {
+      console.error('[BBOX] 视口查询失败:', err)
+    }
+  }, 250)
+}
+
+async function reloadAllForests() {
+  if (!map) return
+  try {
+    const data = await fetchForests()
+    bboxFeatureCount.value = data.features.length
+    if (map.getSource('forests')) {
+      (map.getSource('forests') as maplibregl.GeoJSONSource).setData(data)
+    }
+  } catch (err) {
+    console.error('[Forests] 刷新全量数据失败:', err)
+  }
+}
+
 // ── 统计面板数据 ──────────────────────────────────────────────
 const stats = ref<ForestStat[]>([])
 const totalArea = ref(0)
@@ -252,6 +302,13 @@ onMounted(async () => {
   map.on('click', (e) => {
     if (isProbeActive.value) {
       runProbeQuery(e.lngLat.lng, e.lngLat.lat)
+    }
+  })
+
+  // Stage 6: 监听视口平移/缩放，动态更新 BBOX 检索
+  map.on('moveend', () => {
+    if (isBboxMode.value) {
+      onViewportChange()
     }
   })
 
@@ -576,6 +633,9 @@ onMounted(async () => {
       <button class="view-btn probe-btn" :class="{ active: isProbeActive }" @click="toggleProbeMode">
         {{ isProbeActive ? '🎯 探针模式已开启 (点击地图)' : '🎯 空间缓冲区探针' }}
       </button>
+      <button class="view-btn bbox-btn" :class="{ active: isBboxMode }" @click="toggleBboxMode">
+        {{ isBboxMode ? `⚡ 视口按需加载中 (${bboxFeatureCount}个)` : '⚡ 视口按需加载 (BBOX)' }}
+      </button>
     </div>
 
     <!-- ── 地图容器 ────────────────────────────────────────── -->
@@ -656,6 +716,11 @@ onMounted(async () => {
       <!-- 数据模式 badge -->
       <div class="mode-badge" :class="isTileMode ? 'tile' : 'geojson'">
         {{ isTileMode ? '⚡ 向量瓦片模式' : '📦 GeoJSON 模式' }}
+      </div>
+
+      <!-- Stage 6: BBOX 视口数据计数 badge -->
+      <div v-if="isBboxMode" class="bbox-badge">
+        🎯 视口绿地: {{ bboxFeatureCount }} 个 (PostGIS ST_MakeEnvelope)
       </div>
     </div>
 
@@ -819,6 +884,28 @@ onMounted(async () => {
 .probe-btn.active {
   background: linear-gradient(135deg, #0284c7, #0d9488);
   border-color: #38bdf8;
+}
+
+.bbox-btn {
+  margin-left: 8px;
+}
+.bbox-btn.active {
+  background: linear-gradient(135deg, #d97706, #b45309);
+  border-color: #fbbf24;
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.4);
+}
+
+.bbox-badge {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 8px;
+  border-radius: 20px;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 /* ── 空间探针结果面板 ──────────────────────────────────────── */

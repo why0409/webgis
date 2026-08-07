@@ -62,5 +62,11 @@ export async function fetchNearbyForestPois(lng: number, lat: number, radius = 1
   return res.json()
 }
 
+/** Stage 6: 视口 BBOX 按需加载数据 */
+export async function fetchForestsByBbox(minLng: number, minLat: number, maxLng: number, maxLat: number): Promise<FeatureCollection> {
+  const res = await fetch(`${BASE}/api/forests/bbox?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`)
+  return res.json()
+}
+
 
 
