@@ -53,17 +53,4 @@ public class ForestController {
     public GeoJsonFeatureCollection getForestPois() {
         return new GeoJsonFeatureCollection(forestPoiRepository.findAll());
     }
-
-    /**
-     * Stage 6: GET /api/forests/bbox?minLng=...&minLat=...&maxLng=...&maxLat=...
-     * 视口 BBOX 按需范围空间检索
-     */
-    @GetMapping("/api/forests/bbox")
-    public GeoJsonFeatureCollection getForestsByBbox(
-            @RequestParam double minLng,
-            @RequestParam double minLat,
-            @RequestParam double maxLng,
-            @RequestParam double maxLat) {
-        return new GeoJsonFeatureCollection(forestRepository.findByBbox(minLng, minLat, maxLng, maxLat));
-    }
 }

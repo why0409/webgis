@@ -89,8 +89,6 @@ docker exec -it webgis-postgis psql -U webgis -d webgis -c \
 
 **Stage 5 ✅ 交互式空间探针与 JTS 缓冲区查询 (Spatial Probe & ST_DWithin Queries)** — 在后端引入 JTS (Java Topology Suite `org.locationtech.jts`) 库构造 WGS84 几何点对象，结合 PostGIS `ST_DWithin` & `ST_Distance` 在地理坐标系下计算米级精确大圆距离。后端提供 `/api/spatial/nearby/forests` & `/api/spatial/nearby/pois`，支持多半径（500m / 1km / 2km / 5km）探针检索；前端新增 `🎯 空间缓冲区探针` 模式，支持点击地图任意位置实时生成半透明地理缓冲区圆圈、高亮显示周边绿地/林业 POI 并排序输出真实测地距离 ($d$ 米)。
 
-**Stage 6 ✅ 视口 BBOX 按需加载与极速性能优化 (GIST Spatial Index & Viewport BBOX Lazy Loading)** — 后端增加 `findByBbox` 方法与 `GET /api/forests/bbox` 端点，基于 PostGIS `ST_Intersects(geom, ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326))` 利用 GIST 空间索引实现视口相交过滤；前端增加 `⚡ 视口按需加载 (BBOX)` 开关，防抖监听 MapLibre `moveend` 拖拽/缩放事件，动态获取视口矩形只渲染当前视野内的要素，实时更新并提示视口内要素计数（如 90 个而非全量 1537 个），显著降低网络开销与渲染开销。
-
 **Stage 7 ✅ 林业遥感与多源数据接入 (Remote Sensing & Satellite Imagery Overlay)** — 在 MapLibre 中集成多源栅格底图源（Esri 高清卫星遥感影像 `World_Imagery` 与 Sentinel-2 无云植被遥感 `S2Cloudless`）。图层控制面板新增 `底图与遥感数据源` 单选组（`🗺️ 电子矢量底图` / `🛰️ 高清卫星遥感` / `🌿 Sentinel-2 植被遥感`），支持一键切换并同步渲染 NDVI 植被覆盖度分级色带图例，完美叠加 2D/3D 建筑白模与林地矢量图层。
 
 ## 🔮 未来扩展路线 (Future Roadmap)

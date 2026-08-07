@@ -178,194 +178,7 @@ function changeRadius(r: number) {
   }
 }
 
-// ── Stage 6: 视口 BBOX 按需加载 (Viewport Lazy Loading) ─────────
-const isBboxMode = ref(false)
-const bboxFeatureCount = ref(0)
-const currentZoom = ref(11)
-let bboxDebounceTimer: any = null
 
-function updateCurrentZoom() {
-  if (map) {
-    currentZoom.value = Number(map.getZoom().toFixed(1))
-  }
-}
-
-function updateBboxRectLayer(west: number, south: number, east: number, north: number) {
-  if (!map) return
-  const rectGeoJSON: FeatureCollection = {
-    type: 'FeatureCollection',
-    features: [{
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[
-          [west, south],
-          [east, south],
-          [east, north],
-          [west, north],
-          [west, south]
-        ]]
-      }
-    }]
-  }
-
-  if (!map.getSource('bbox-rect')) {
-    map.addSource('bbox-rect', { type: 'geojson', data: rectGeoJSON })
-    map.addLayer({
-      id: 'bbox-rect-fill',
-      type: 'fill',
-      source: 'bbox-rect',
-      paint: {
-        'fill-color': '#fbbf24',
-        'fill-opacity': 0.08
-      }
-    })
-    map.addLayer({
-      id: 'bbox-rect-line',
-      type: 'line',
-      source: 'bbox-rect',
-      paint: {
-        'line-color': '#fbbf24',
-        'line-width': 2.5,
-        'line-dasharray': [4, 3]
-      }
-    })
-  } else {
-    (map.getSource('bbox-rect') as maplibregl.GeoJSONSource).setData(rectGeoJSON)
-    if (map.getLayer('bbox-rect-fill')) map.setLayoutProperty('bbox-rect-fill', 'visibility', 'visible')
-    if (map.getLayer('bbox-rect-line')) map.setLayoutProperty('bbox-rect-line', 'visibility', 'visible')
-  }
-}
-
-function clearBboxRectLayer() {
-  if (!map) return
-  if (map.getLayer('bbox-rect-fill')) map.setLayoutProperty('bbox-rect-fill', 'visibility', 'none')
-  if (map.getLayer('bbox-rect-line')) map.setLayoutProperty('bbox-rect-line', 'visibility', 'none')
-}
-
-function ensureGeoJsonForestLayers() {
-  if (!map) return
-  if (!map.getSource('forests-bbox')) {
-    map.addSource('forests-bbox', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] }
-    })
-    map.addLayer({
-      id: 'forests-geojson-fill',
-      type: 'fill',
-      source: 'forests-bbox',
-      paint: {
-        'fill-color': [
-          'match', ['get', 'category'],
-          'forest', CATEGORY_COLOR.forest,
-          'wood',   CATEGORY_COLOR.wood,
-          'grass',  CATEGORY_COLOR.grass,
-          'park',   CATEGORY_COLOR.park,
-          CATEGORY_COLOR.other
-        ],
-        'fill-opacity': 0.6
-      }
-    })
-    map.addLayer({
-      id: 'forests-geojson-line',
-      type: 'line',
-      source: 'forests-bbox',
-      paint: {
-        'line-color': '#0284c7',
-        'line-width': 2
-      }
-    })
-  } else {
-    if (map.getLayer('forests-geojson-fill')) map.setLayoutProperty('forests-geojson-fill', 'visibility', 'visible')
-    if (map.getLayer('forests-geojson-line')) map.setLayoutProperty('forests-geojson-line', 'visibility', 'visible')
-  }
-}
-
-function toggleBboxMode() {
-  isBboxMode.value = !isBboxMode.value
-  if (!map) return
-
-  if (isBboxMode.value) {
-    // 隐藏 Martin 向量瓦片与常规 GeoJSON 图层，切为专属视口切片图层
-    if (map.getLayer('forests-fill')) map.setLayoutProperty('forests-fill', 'visibility', 'none')
-    if (map.getLayer('forests-line')) map.setLayoutProperty('forests-line', 'visibility', 'none')
-
-    ensureGeoJsonForestLayers()
-
-    // 若处在宏观全视角，自动推近聚焦
-    if (map.getZoom() < 13) {
-      map.flyTo({ zoom: 13.5, duration: 1000 })
-    }
-    fetchBboxImmediately()
-  } else {
-    // 隐藏 BBOX 图层及黄框
-    clearBboxRectLayer()
-    if (map.getLayer('forests-geojson-fill')) map.setLayoutProperty('forests-geojson-fill', 'visibility', 'none')
-    if (map.getLayer('forests-geojson-line')) map.setLayoutProperty('forests-geojson-line', 'visibility', 'none')
-
-    if (map.getLayer('forests-fill')) map.setLayoutProperty('forests-fill', 'visibility', 'visible')
-    if (map.getLayer('forests-line')) map.setLayoutProperty('forests-line', 'visibility', 'visible')
-
-    if (!isTileMode.value) {
-      reloadAllForests()
-    }
-  }
-}
-
-async function fetchBboxImmediately() {
-  if (!map) return
-  if (bboxDebounceTimer) clearTimeout(bboxDebounceTimer)
-
-  const bounds = map.getBounds()
-  const w = bounds.getWest()
-  const s = bounds.getSouth()
-  const e = bounds.getEast()
-  const n = bounds.getNorth()
-
-  const minLng = Math.min(w, e)
-  const maxLng = Math.max(w, e)
-  const minLat = Math.min(s, n)
-  const maxLat = Math.max(s, n)
-
-  // 绘制/实时更新 BBOX 视口边界金黄色虚线矩形框
-  updateBboxRectLayer(minLng, minLat, maxLng, maxLat)
-
-  try {
-    const data = await fetchForestsByBbox(minLng, minLat, maxLng, maxLat)
-    const cnt = data.features ? data.features.length : 0
-    bboxFeatureCount.value = cnt
-
-    ensureGeoJsonForestLayers()
-    if (map.getSource('forests-bbox')) {
-      (map.getSource('forests-bbox') as maplibregl.GeoJSONSource).setData(data)
-    }
-  } catch (err) {
-    console.error('[BBOX] 视口查询失败:', err)
-  }
-}
-
-async function onViewportChange() {
-  if (!map || !isBboxMode.value) return
-  if (bboxDebounceTimer) clearTimeout(bboxDebounceTimer)
-
-  bboxDebounceTimer = setTimeout(() => {
-    fetchBboxImmediately()
-  }, 200)
-}
-
-async function reloadAllForests() {
-  if (!map) return
-  try {
-    const data = await fetchForests()
-    bboxFeatureCount.value = data.features ? data.features.length : 0
-    if (map.getSource('forests')) {
-      (map.getSource('forests') as maplibregl.GeoJSONSource).setData(data)
-    }
-  } catch (err) {
-    console.error('[Forests] 刷新全量数据失败:', err)
-  }
-}
 
 // ── 统计面板数据 ──────────────────────────────────────────────
 const stats = ref<ForestStat[]>([])
@@ -510,21 +323,7 @@ onMounted(async () => {
     }
   })
 
-  // Stage 6: 实时监听视口平移与缩放，动态更新 BBOX 边界框与切片检索
-  map.on('move', () => {
-    updateCurrentZoom()
-    if (isBboxMode.value && map) {
-      const b = map.getBounds()
-      updateBboxRectLayer(b.getWest(), b.getSouth(), b.getEast(), b.getNorth())
-    }
-  })
 
-  map.on('moveend', () => {
-    updateCurrentZoom()
-    if (isBboxMode.value) {
-      onViewportChange()
-    }
-  })
 
   map.on('load', async () => {
     // ── Stage 7: 注册遥感栅格底图 (ArcGIS 卫星图 & Sentinel-2 遥感影像) ────
@@ -574,7 +373,6 @@ onMounted(async () => {
 
     // ── B. 林地/绿地面图层（按 category 颜色渲染）────────────
     const forests = await fetchForests()
-    bboxFeatureCount.value = forests.features ? forests.features.length : 0
     map!.addSource('forests', { type: 'geojson', data: forests })
     map!.addLayer({
       id: 'forests-fill',
@@ -894,9 +692,6 @@ onMounted(async () => {
       <button class="view-btn probe-btn" :class="{ active: isProbeActive }" @click="toggleProbeMode">
         {{ isProbeActive ? '🎯 探针模式已开启 (点击地图)' : '🎯 空间缓冲区探针' }}
       </button>
-      <button class="view-btn bbox-btn" :class="{ active: isBboxMode }" @click="toggleBboxMode">
-        {{ isBboxMode ? `⚡ 视口按需加载中 (${bboxFeatureCount}个)` : '⚡ 视口按需加载 (BBOX)' }}
-      </button>
     </div>
 
     <!-- ── 地图容器 ────────────────────────────────────────── -->
@@ -1053,29 +848,6 @@ onMounted(async () => {
       <!-- 数据模式 badge -->
       <div class="mode-badge" :class="isTileMode ? 'tile' : 'geojson'">
         {{ isTileMode ? '⚡ 向量瓦片模式' : '📦 GeoJSON 模式' }}
-      </div>
-
-      <!-- Stage 6: BBOX 视口按需加载分析与性能可视化指示器 -->
-      <div v-if="isBboxMode" class="bbox-analytics-box">
-        <div class="bbox-title">⚡ PostGIS ST_MakeEnvelope 视口切片</div>
-        <div class="bbox-metric">
-          <span class="metric-label">当前地图层级:</span>
-          <span class="metric-val" style="color:#38bdf8">Zoom {{ currentZoom }}</span>
-        </div>
-        <div class="bbox-metric">
-          <span class="metric-label">视口内渲染:</span>
-          <span class="metric-val" style="color:#fbbf24">{{ bboxFeatureCount }} 个要素</span>
-        </div>
-        <div class="bbox-metric">
-          <span class="metric-label">全区总要素:</span>
-          <span class="metric-val">1,537 个要素</span>
-        </div>
-        <div class="bbox-savings" v-if="currentZoom < 12">
-          💡 当前属于全区宏观视角 (Zoom {{ currentZoom }})。<strong>请双击或放大地图至局部 (Zoom ≥ 13)</strong> 查看精细视口切片！
-        </div>
-        <div class="bbox-savings" v-else>
-          🔥 视口局部切片：动态节省 <strong style="color:#00e676">{{ Math.round((1 - bboxFeatureCount / 1537) * 100) }}%</strong> 传输与渲染压力
-        </div>
       </div>
     </div>
 
@@ -1241,28 +1013,6 @@ onMounted(async () => {
   border-color: #38bdf8;
 }
 
-.bbox-btn {
-  margin-left: 8px;
-}
-.bbox-btn.active {
-  background: linear-gradient(135deg, #d97706, #b45309);
-  border-color: #fbbf24;
-  color: #ffffff;
-  box-shadow: 0 0 16px rgba(251, 191, 36, 0.4);
-}
-
-.bbox-badge {
-  margin-top: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  text-align: center;
-  padding: 4px 8px;
-  border-radius: 20px;
-  background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-}
-
 /* ── Stage 7: 遥感底图选择器 & NDVI 详细图例 ───────────────── */
 .basemap-selector {
   display: flex;
@@ -1338,37 +1088,7 @@ onMounted(async () => {
   font-size: 10px;
 }
 
-/* ── Stage 6 BBOX 分析面板 ───────────────────────────────────── */
-.bbox-analytics-box {
-  margin-top: 8px;
-  background: rgba(251, 191, 36, 0.08);
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
 
-.bbox-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: #fbbf24;
-  margin-bottom: 4px;
-}
-
-.bbox-metric {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: #cbd5e1;
-  margin-bottom: 2px;
-}
-
-.bbox-savings {
-  font-size: 10px;
-  color: #94a3b8;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.1);
-}
 
 .poi-named-filter {
   grid-column: span 2;

@@ -93,41 +93,4 @@ public class ForestRepository {
             return row;
         });
     }
-
-    /**
-     * Stage 6: 视口 BBOX 按需空间查询
-     * 使用 PostGIS ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326) 走 GIST 空间索引过滤当前视口内要素
-     */
-    /**
-     * Stage 6: 视口 BBOX 按需空间查询
-     * 使用 PostGIS ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326) 走 GIST 空间索引过滤当前视口内要素
-     */
-    public List<GeoJsonFeature> findByBbox(double lng1, double lat1, double lng2, double lat2) {
-        double minLng = Math.min(lng1, lng2);
-        double maxLng = Math.max(lng1, lng2);
-        double minLat = Math.min(lat1, lat2);
-        double maxLat = Math.max(lat1, lat2);
-
-        String sql = """
-                SELECT name, category, landuse, leisure, "natural",
-                       id AS osm_id,
-                       round(ST_Area(geom::geography)::numeric, 2) AS area_m2,
-                       ST_AsGeoJSON(geom) AS geojson
-                FROM osm_forests
-                WHERE geom IS NOT NULL
-                  AND ST_Intersects(geom, ST_MakeEnvelope(?, ?, ?, ?, 4326))
-                ORDER BY ST_Area(geom) DESC
-                """;
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Map<String, Object> properties = new LinkedHashMap<>();
-            properties.put("name",     rs.getString("name"));
-            properties.put("category", rs.getString("category"));
-            properties.put("landuse",  rs.getString("landuse"));
-            properties.put("leisure",  rs.getString("leisure"));
-            properties.put("natural",  rs.getString("natural"));
-            properties.put("osm_id",   rs.getString("osm_id"));
-            properties.put("area_m2",  rs.getDouble("area_m2"));
-            return new GeoJsonFeature(properties, rs.getString("geojson"));
-        }, minLng, minLat, maxLng, maxLat);
-    }
 }
