@@ -25,7 +25,7 @@ const layers = reactive({
   boundary: true,
   pois: false, // 设施 POI 默认不勾选，避免初始视野被图标杂乱干扰
   forests: true,
-  forestPois: true,
+  forestPois: false, // 林业 POI 默认不勾选
   choropleth: true,
   buildings: true
 })
@@ -591,6 +591,7 @@ onMounted(async () => {
       id: 'forest-pois-circle',
       type: 'circle',
       source: 'forest-pois',
+      layout: { visibility: 'none' },
       paint: {
         'circle-radius': 6,
         'circle-color': '#00e676',
