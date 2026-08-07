@@ -279,6 +279,7 @@ function setBasemap(type: BasemapType) {
 // ── 设施 POI 分类子图层过滤控制 ──────────────────────────────────
 const poiCategories = reactive({
   food: true,
+  shop: true,
   education: true,
   medical: true,
   finance: true,
@@ -290,12 +291,13 @@ const poiCategories = reactive({
 
 const CAT_AMENITIES: Record<string, string[]> = {
   food:          ['restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court'],
+  shop:          ['shop', 'supermarket', 'convenience', 'mall'],
   finance:       ['bank', 'atm', 'post_office'],
   education:     ['college', 'university', 'school', 'kindergarten', 'research_institute', 'library'],
-  medical:       ['hospital', 'clinic', 'pharmacy', 'dentist', 'doctors', 'public_bath'],
+  medical:       ['hospital', 'clinic', 'pharmacy', 'dentist', 'doctors', 'public_bath', 'healthcare'],
   transport:     ['parking', 'charging_station', 'car_wash', 'fuel', 'taxi'],
   gov:           ['townhall', 'police', 'fire_station', 'courthouse', 'embassy'],
-  entertainment: ['cinema', 'theatre', 'exhibition_centre', 'community_centre', 'arts_centre'],
+  entertainment: ['cinema', 'theatre', 'exhibition_centre', 'community_centre', 'arts_centre', 'hotel'],
   public:        ['toilets', 'shelter', 'fountain', 'internet_cafe']
 }
 
@@ -519,19 +521,21 @@ onMounted(async () => {
           'match', ['get', 'amenity'],
           // 🍜 餐饮
           ['restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court'], '#f97316',
+          // 🛍️ 商业购物
+          ['shop', 'supermarket', 'convenience', 'mall'], '#ec4899',
           // 🏦 金融/服务
           ['bank', 'atm', 'post_office', 'post_box'], '#a855f7',
           // 🎓 教育
           ['college', 'university', 'school', 'kindergarten', 'research_institute', 'library'], '#0ea5e9',
           // 🏥 医疗
-          ['hospital', 'clinic', 'pharmacy', 'dentist', 'doctors', 'public_bath'], '#ef4444',
+          ['hospital', 'clinic', 'pharmacy', 'dentist', 'doctors', 'public_bath', 'healthcare'], '#ef4444',
           // 🚗 交通
           ['parking', 'parking_entrance', 'bicycle_parking', 'bicycle_repair_station',
            'charging_station', 'car_wash', 'fuel', 'taxi'], '#64748b',
           // 🏛️ 政务/安全
           ['townhall', 'police', 'fire_station', 'courthouse', 'embassy'], '#4f46e5',
           // 🎭 娱乐文化
-          ['cinema', 'theatre', 'exhibition_centre', 'community_centre', 'arts_centre'], '#eab308',
+          ['cinema', 'theatre', 'exhibition_centre', 'community_centre', 'arts_centre', 'hotel'], '#eab308',
           // 🌿 公共设施
           ['toilets', 'waste_basket', 'shelter', 'fountain', 'bench', 'internet_cafe'], '#14b8a6',
           // 其他 → 中灰
@@ -794,6 +798,10 @@ onMounted(async () => {
         <label class="poi-legend-item">
           <input type="checkbox" v-model="poiCategories.food" @change="updatePoiFilter" />
           <span class="poi-dot" style="background:#f97316"></span>餐饮
+        </label>
+        <label class="poi-legend-item">
+          <input type="checkbox" v-model="poiCategories.shop" @change="updatePoiFilter" />
+          <span class="poi-dot" style="background:#ec4899"></span>购物
         </label>
         <label class="poi-legend-item">
           <input type="checkbox" v-model="poiCategories.education" @change="updatePoiFilter" />
